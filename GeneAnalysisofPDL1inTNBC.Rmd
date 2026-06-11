@@ -1,0 +1,1273 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  word_document: default
+  pdf_document: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+#install.packages("UCSCXenaTools")
+library(UCSCXenaTools)
+
+XenaDataUpdate()
+
+library(UCSCXenaTools)
+# Generate TCGA Hub query
+query <- XenaGenerate(subset = XenaHostNames == "tcgaHub")
+
+library(UCSCXenaTools)
+
+
+
+
+```
+
+```{r}
+library(dplyr)
+
+# Filter directly from XenaData
+clin_query <- XenaData %>%
+  filter(XenaCohorts == "TCGA Breast Cancer", 
+         XenaDatasets == "Phenotypes") %>%
+  XenaGenerate()
+
+
+
+```
+
+```{r}
+library(UCSCXenaTools)
+library(dplyr)
+
+# Define cohort
+cohort <- "TCGA Breast Cancer (BRCA)"
+
+# ---- Clinical / Phenotype ----
+pheno_query <- XenaGenerate(subset = XenaCohorts == cohort) %>%
+  XenaFilter(filterDatasets = "TCGA.BRCA.sampleMap/BRCA_clinicalMatrix") %>%
+  XenaQuery()
+
+pheno_data <- XenaDownload(pheno_query, destdir = "data/") %>%
+  XenaPrepare()
+
+
+```
+
+```{r}
+# ---- Survival ----
+surv_query <- XenaGenerate(subset = XenaCohorts == cohort) %>%
+  XenaFilter(filterDatasets = "survival/BRCA_survival.txt") %>%
+  XenaQuery()
+
+surv_data <- XenaDownload(surv_query, destdir = "data/") %>%
+  XenaPrepare()
+
+
+
+```
+```{r}
+# Make a "data" folder if it doesn’t exist
+if(!dir.exists("data")) dir.create("data")
+
+# Download the file directly from Xena
+download.file("https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.BRCA.sampleMap%2FBRCA_clinicalMatrix",
+              destfile = "data/BRCA_clinicalMatrix.txt")
+
+# Now load it
+pheno_data <- read.delim("data/BRCA_clinicalMatrix.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Preview
+dim(pheno_data)
+head(pheno_data[,1:10])
+
+```
+```{r}
+# Load the clinical matrix you just downloaded
+pheno_data <- read.delim("data/BRCA_clinicalMatrix.txt", 
+                         header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Check dimensions (rows = samples, columns = clinical variables)
+dim(pheno_data)
+
+# See the first 6 rows and first 10 columns
+head(pheno_data[, 1:10])
+
+# See all available column names
+colnames(pheno_data)
+
+```
+```{r}
+colnames(pheno_data)
+
+```
+
+```{r}
+library(dplyr)
+
+# keep only the important columns
+receptors <- pheno_data %>%
+  select(sampleID, ER_Status_nature2012, PR_Status_nature2012, HER2_Final_Status_nature2012)
+
+# filter TNBC (ER-, PR-, HER2-)
+tnbc_samples <- receptors %>%
+  filter(ER_Status_nature2012 == "Negative",
+         PR_Status_nature2012 == "Negative",
+         HER2_Final_Status_nature2012 == "Negative")
+
+# check result
+head(tnbc_samples)
+nrow(tnbc_samples)
+
+```
+```{r}
+# show first few TNBC patients
+head(tnbc_samples)
+
+# how many TNBC samples?
+nrow(tnbc_samples)
+
+```
+```{r}
+library(dplyr)
+
+# keep only the important columns
+receptors <- pheno_data %>%
+  select(sampleID,
+         ER_Status_nature2012,
+         PR_Status_nature2012,
+         HER2_Final_Status_nature2012,
+         PAM50_mRNA_nature2012)
+
+# filter TNBC (ER-, PR-, HER2-)
+tnbc_samples <- receptors %>%
+  filter(ER_Status_nature2012 == "Negative",
+         PR_Status_nature2012 == "Negative",
+         HER2_Final_Status_nature2012 == "Negative")
+
+# how many TNBC are also PAM50 Basal-like
+tnbc_basal <- tnbc_samples %>%
+  filter(PAM50_mRNA_nature2012 == "Basal-like")
+
+# counts
+nrow(tnbc_samples)      # TNBC by ER/PR/HER2
+nrow(tnbc_basal)        # subset of those that are also Basal-like
+
+```
+
+
+
+`
+```{r}
+# All TNBC samples (123)
+tnbc_samples <- pheno_data %>%
+  filter(ER_Status_nature2012 == "Negative",
+         PR_Status_nature2012 == "Negative",
+         HER2_Final_Status_nature2012 == "Negative")
+
+# Subset that are Basal-like (76)
+tnbc_basal <- tnbc_samples %>%
+  filter(PAM50_mRNA_nature2012 == "Basal-like")
+
+# Select only the columns of interest
+tnbc_selected <- tnbc_samples %>%
+  select(sampleID,
+         ER_Status_nature2012,
+         PR_Status_nature2012,
+         HER2_Final_Status_nature2012,
+         PAM50_mRNA_nature2012)
+
+tnbc_basal_selected <- tnbc_basal %>%
+  select(sampleID,
+         ER_Status_nature2012,
+         PR_Status_nature2012,
+         HER2_Final_Status_nature2012,
+         PAM50_mRNA_nature2012)
+
+# Print them
+cat("TNBC samples (123 rows):\n")
+print(tnbc_selected)
+
+cat("\nTNBC + Basal-like samples (76 rows):\n")
+print(tnbc_basal_selected)
+
+
+
+```
+
+```{r}
+table(tnbc_samples$PAM50_mRNA_nature2012)
+prop.table(table(tnbc_samples$PAM50Call_RNAseq)) * 100
+```
+```{r}
+# Make a frequency + percentage table
+pam50_table <- table(tnbc_samples$PAM50_mRNA_nature2012)
+pam50_df <- as.data.frame(pam50_table)
+
+# Add percentages
+pam50_df$Percent <- round(100 * pam50_df$Freq / sum(pam50_df$Freq), 2)
+
+# Print nicely
+pam50_df
+
+```
+
+
+```{r}
+# Filter for Basal-like (TNBC equivalent)
+tnbc_samples <- pheno_data %>%
+  filter(PAM50_mRNA_nature2012 == "Basal-like")
+
+# How many TNBC samples?
+nrow(tnbc_samples)
+
+# Quick look at them
+head(tnbc_samples)
+
+```
+```{r}
+library(dplyr)
+
+# Step 1: Remove samples with missing PAM50
+tnbc_samples_clean <- tnbc_basal_selected %>%
+  filter(!is.na(PAM50_mRNA_nature2012))
+
+# Step 2: Keep only the important columns
+sample_info <- tnbc_samples_clean %>%
+  select(sampleID,
+         ER_Status_nature2012,
+         PR_Status_nature2012,
+         HER2_Final_Status_nature2012,
+         PAM50_mRNA_nature2012)
+
+# Step 3: Save as CSV in your desired folder
+write.csv(sample_info,
+          "C:/Users/user/OneDrive/Desktop/4th YR PROJ/TNBC_full_sample_info.csv",
+          row.names = FALSE)
+
+# Step 4: Confirm working directory
+getwd()
+
+```
+```{r}
+# Load libraries
+library(dplyr)
+library(readr)
+
+# ----------------------------
+# 1. Download and read RNAseq data
+# ----------------------------
+# TCGA BRCA RNAseq (log2(x+1) normalized RSEM counts)
+options(timeout = 600)
+
+expr_url <- "https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.BRCA.sampleMap%2FHiSeqV2.gz"
+
+download.file(expr_url, destfile = "TCGA_BRCA_HiSeqV2.gz", mode = "wb")
+
+
+
+
+```
+```{r}
+library(data.table)
+
+# Read expression file
+expr_data <- fread("TCGA_BRCA_HiSeqV2.gz")
+
+# Check first few rows
+head(expr_data[,1:5])  # first 5 columns
+
+```
+```{r}
+colnames(expr_data)[1:10]   # first 10 sample IDs
+nrow(expr_data)             # number of genes (~20,531)
+ncol(expr_data)             # number of samples (1218 + 1 gene column)
+
+```
+```{r}
+pheno <- read.csv("TNBC_full_sample_info.csv")
+
+# Check sample IDs
+head(pheno$sampleID)
+
+# Standardize IDs
+pheno$sampleID <- gsub("\\.", "-", pheno$sampleID)
+
+```
+```{r}
+# Keep only genes + TNBC sample columns
+tnbc_expr <- expr_data[, c("sample", pheno$sampleID), with = FALSE]
+
+# Check dimensions
+dim(tnbc_expr)
+
+```
+```{r}
+# Preview first few rows and columns
+head(tnbc_expr[, 1:6])   # first 6 columns
+
+```
+```{r}
+write.csv(tnbc_expr, "TNBC_expression_matrix.csv", row.names = FALSE)
+getwd()
+```
+```{r}
+## ---- Setup ----
+# install.packages(c("data.table","dplyr","ggplot2","pheatmap"), dependencies = TRUE)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+
+# Paths to your files (adjust if needed)
+expr_file  <- "TNBC_expression_matrix.csv"      # genes x TNBC samples (you created earlier)
+pheno_file <- "TNBC_full_sample_info.csv"       # sampleID, ER/PR/HER2, PAM50, etc.
+
+## ---- Load data ----
+expr_df  <- fread(expr_file)           # first column = gene symbol, rest = samples
+pheno_df <- read.csv(pheno_file, stringsAsFactors = FALSE)
+
+# standardize IDs to TCGA-XX-XXXX format with dashes (just in case)
+pheno_df$sampleID <- gsub("\\.", "-", pheno_df$sampleID)
+
+# figure out the gene column name (often "sample" in Xena exports)
+gene_col_name <- colnames(expr_df)[1]
+colnames(expr_df)[1] <- "Gene"
+
+# keep only samples that appear in both expression & phenotype
+expr_samples <- setdiff(colnames(expr_df), "Gene")
+common <- intersect(expr_samples, pheno_df$sampleID)
+
+if (length(common) < 5) {
+  message("Heads up: fewer than 5 TNBC samples matched between expression and phenotype. Check ID formats.")
+}
+# subset & order columns: Gene + common samples
+expr_df <- expr_df[, c("Gene", common), with = FALSE]
+
+# align phenotype to expression column order
+pheno_df <- pheno_df %>% filter(sampleID %in% common)
+pheno_df <- pheno_df[match(common, pheno_df$sampleID), ]
+
+## ---- Build numeric matrix ----
+# rownames = gene symbols; remove duplicated/missing gene names
+expr_df <- expr_df[!is.na(expr_df$Gene) & expr_df$Gene != "", ]
+expr_df <- expr_df[!duplicated(expr_df$Gene), ]
+
+mat <- as.matrix(expr_df[, -1, with = FALSE])
+mode(mat) <- "numeric"
+rownames(mat) <- expr_df$Gene
+
+# quick sanity checks
+cat("Matrix dimensions (genes x samples):", paste(dim(mat), collapse=" x "), "\n")
+cat("Phenotype rows:", nrow(pheno_df), " (should equal # samples)\n")
+
+## ---- QC: basic distribution & sample-level summary ----
+# per-sample median expression (simple outlier check)
+sample_meds <- apply(mat, 2, median, na.rm = TRUE)
+print(summary(sample_meds))
+
+# boxplot (log scale already in data, but this shows spread); may be heavy for many genes
+# boxplot(as.data.frame(mat), outline = FALSE, las = 2, main = "Per-sample expression distribution")
+## ---- Variance filtering for exploration ----
+# keep top 1000 most variable genes for PCA/heatmap
+gene_var <- apply(mat, 1, var, na.rm = TRUE)
+top_n <- 1000
+keep_genes <- names(sort(gene_var, decreasing = TRUE))[seq_len(min(top_n, length(gene_var)))]
+mat_var <- mat[keep_genes, ]
+
+## ---- Optional grouping: PD-L1 (CD274) High vs Low ----
+# create a simple biology-based color for plots even though all are Basal
+group <- rep("Unknown", ncol(mat_var))
+names(group) <- colnames(mat_var)
+
+if ("CD274" %in% rownames(mat)) {
+  cd274 <- mat["CD274", ]
+  cutoff <- median(cd274, na.rm = TRUE)  # median split
+  group[cd274 >= cutoff] <- "PD-L1_high"
+  group[cd274 <  cutoff] <- "PD-L1_low"
+} else {
+  message("CD274 not found; grouping will remain 'Unknown'.")
+}
+
+# Add PAM50 (should be Basal-like for all, but keep for completeness)
+annot <- data.frame(
+  sampleID = pheno_df$sampleID,
+  PAM50    = pheno_df$PAM50Call_RNAseq %||% pheno_df$PAM50_mRNA_nature2012,
+  Group    = group[pheno_df$sampleID],
+  stringsAsFactors = FALSE
+)
+row.names(annot) <- annot$sampleID
+annot$sampleID <- NULL
+
+## ---- PCA ----
+# prcomp expects samples as rows -> transpose
+pca <- prcomp(t(mat_var), center = TRUE, scale. = TRUE)
+
+pca_df <- data.frame(
+  Sample = rownames(pca$x),
+  PC1 = pca$x[,1],
+  PC2 = pca$x[,2],
+  Group = annot[rownames(pca$x), "Group"],
+  PAM50 = annot[rownames(pca$x), "PAM50"],
+  stringsAsFactors = FALSE
+)
+head(pca_df)
+
+# Plot PCA (colored by PD-L1 group)
+ggplot(pca_df, aes(PC1, PC2, label = Sample, color = Group)) +
+  geom_point(size = 3, alpha = 0.9) +
+  theme_minimal(base_size = 12) +
+  labs(title = "PCA of Basal TNBC (top variable genes)",
+       subtitle = "Colored by PD-L1 (CD274) median-split",
+       color = "Group")
+
+## ---- Heatmap ----
+# scale rows (genes) for visualization
+ann_colors <- list(
+  Group = c("PD-L1_high" = "#1f77b4", "PD-L1_low" = "#ff7f0e", "Unknown" = "grey70"),
+  PAM50 = c("Basal-like" = "#d62728", "Luminal A"="#2ca02c", "Luminal B"="#9467bd",
+            "HER2-enriched"="#8c564b", "Normal-like"="#bcbd22")
+)
+
+pheatmap(mat_var,
+         scale = "row",
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         annotation_col = annot,
+         annotation_colors = ann_colors,
+         main = "Basal TNBC — Heatmap of Top Variable Genes")
+
+## ---- Save key outputs ----
+write.csv(pca_df, "TNBC_PCA_scores.csv", row.names = FALSE)
+# Optionally save the top-variable matrix used for plots
+write.csv(data.frame(Gene = rownames(mat_var), mat_var, check.names = FALSE),
+          "TNBC_topVariableMatrix.csv", row.names = FALSE)
+
+cat("Done. Files saved: TNBC_PCA_scores.csv, TNBC_topVariableMatrix.csv\n")
+
+```
+```{r}
+#install.packages("ggfortify")
+# Make sure these packages are loaded
+library(ggplot2)
+library(ggfortify)   # needed for autoplot(prcomp)
+
+## ---- PCA + Heatmap in one PDF ----
+
+# 1. Perform PCA on your TNBC expression subset
+pca_res <- prcomp(t(mat_var), scale. = TRUE)
+
+# 2. Build PCA plot (color by PD-L1 group)
+p <- ggplot(pca_df, aes(PC1, PC2, color = Group, label = Sample)) +
+       geom_point(size = 3, alpha = 0.9) +
+       theme_minimal(base_size = 12) +
+       labs(title = "PCA of Basal TNBC (top variable genes)",
+            subtitle = "Colored by PD-L1 (CD274) median split",
+            color = "Group")
+
+# 3. Open a PDF device
+pdf("TNBC_PCA_Heatmap.pdf", width = 8, height = 6)
+
+# 4. Print PCA plot (page 1)
+print(p)
+
+# 5. Print Heatmap (page 2)
+pheatmap(mat_var,
+         scale = "row",
+         show_rownames = FALSE,
+         show_colnames = FALSE,
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         annotation_col = annot,
+         annotation_colors = ann_colors,
+         main = "Basal TNBC — Heatmap of Top Variable Genes")
+
+# 6. Close PDF device
+dev.off()
+
+
+```
+```{r}
+# open the PDF you just created
+browseURL("TNBC_PCA_Heatmap.pdf")
+
+```
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Install DEG-related packages from Bioconductor
+BiocManager::install("limma")
+BiocManager::install("edgeR")
+
+# For plots
+install.packages("ggplot2")
+install.packages("EnhancedVolcano")  # optional, for volcano plots
+
+```
+```{r}
+dim(mat)
+colnames(mat)[1:5]
+dim(pheno_df)
+head(pheno_df$Group)
+
+```
+
+```{r}
+# Suppose you have a column with PD-L1 expression values
+# Adjust the column name if needed
+pd_l1_values <- as.numeric(pheno_df$PDL1)
+# Get PD-L1 expression from the matrix
+pd_l1_values <- as.numeric(mat["CD274", ])   # CD274 is the gene symbol for PD-L1
+#median_split
+pheno_df$Group <- ifelse(pd_l1_values > median(pd_l1_values, na.rm = TRUE),
+                         "PDL1_high", "PDL1_low")
+
+table(pheno_df$Group)
+
+pheno_df <- read.csv("C:/Users/user/OneDrive/Desktop/4th YR PROJ/ALL RESULTS/TNBC_full_sample_info.csv")
+
+# Then re-filter to TNBC Basal-like
+pheno_df <- pheno_df %>%
+  filter(ER_Status_nature2012 == "Negative",
+         PR_Status_nature2012 == "Negative",
+         HER2_Final_Status_nature2012 == "Negative",
+         PAM50_mRNA_nature2012 == "Basal-like")
+design <- model.matrix(~ CD274, data = pheno_df)
+
+
+```
+
+```{r}
+# Load packages
+library(limma)
+library(edgeR)
+
+# 1. Expression matrix (already subset to TNBC)
+# exp_mat : genes x samples (20530 x 76)
+# pheno   : data.frame with sampleID and Group (PDL1_high / PDL1_low)
+
+# Make sure columns match between expression and phenotype
+all(colnames(mat) == pheno_df$sampleID)
+
+# 2. Create DGEList object (limma-voom works well with RNAseq log2 normalized data too)
+dge <- DGEList(counts = mat)
+
+# 3. Experimental design
+pheno_df$Group <- factor(pheno_df$Group, levels = c("PDL1_low", "PDL1_high"))
+design <- model.matrix(~ Group, data = pheno_df)
+colnames(design) <- c("Intercept", "PDL1_high_vs_low")
+
+# 4. Apply voom transformation (stabilizes variance)
+v <- voom(dge, design, plot = TRUE)
+
+# 5. Fit linear model
+fit <- lmFit(v, design)
+
+# 6. Apply empirical Bayes moderation
+fit <- eBayes(fit)
+
+# 7. Get DEG results
+deg_results <- topTable(fit,
+                        coef = "PDL1_high_vs_low",
+                        number = Inf,
+                        adjust.method = "BH")
+
+# Save to CSV
+write.csv(deg_results,
+          "TNBC_PDL1_DEG_results.csv",
+          row.names = TRUE)
+
+# 8. Quick summary
+summary(decideTests(fit))
+
+```
+```{r}
+colnames(design)
+colnames(fit$coefficients)
+
+# Assuming 'fit' is your limma object after eBayes
+deg <- topTable(fit, coef = "PDL1_high_vs_low", number = Inf, sort.by = "P")
+head(deg)
+
+
+# Add a column for significance
+deg_results$Significance <- "Not Sig"
+deg_results$Significance[deg_results$adj.P.Val < 0.05 & deg_results$logFC > 1] <- "Up"
+deg_results$Significance[deg_results$adj.P.Val < 0.05 & deg_results$logFC < -1] <- "Down"
+
+# Volcano plot
+library(ggplot2)
+
+ggplot(deg_results, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_color_manual(values = c("blue", "grey", "red")) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+  theme_minimal(base_size = 14) +
+  labs(title = "Volcano Plot of DEGs",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value")
+
+```
+```{r}
+library(ggplot2)
+library(ggrepel)
+
+# --- Adjust thresholds as needed ---
+logFC_cutoff <- 1      # change to 2 if you want stricter cutoff
+adjP_cutoff  <- 0.05   # change to 0.01 if you want stricter cutoff
+
+# Add significance category
+deg$Significance <- "Not Sig"
+deg$Significance[deg$logFC >= logFC_cutoff & deg$adj.P.Val < adjP_cutoff] <- "Up"
+deg$Significance[deg$logFC <= -logFC_cutoff & deg$adj.P.Val < adjP_cutoff] <- "Down"
+
+# Order by adjusted p-value to pick top genes
+top_genes <- deg[order(deg$adj.P.Val), ][1:10, ]   # top 10 most significant
+
+# Volcano plot with labels
+volcano <- ggplot(deg, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = c("Down" = "blue", "Not Sig" = "grey", "Up" = "red")) +
+  geom_vline(xintercept = c(-logFC_cutoff, logFC_cutoff), linetype = "dashed") +
+  geom_hline(yintercept = -log10(adjP_cutoff), linetype = "dashed") +
+  geom_text_repel(data = top_genes,
+                  aes(label = rownames(top_genes)),
+                  size = 3, max.overlaps = 10) +
+  labs(title = "Volcano Plot of DEGs",
+       x = "Log2 Fold Change",
+       y = "-Log10 Adjusted P-value") +
+  theme_minimal()
+
+# Save high-res
+ggsave("Volcano_Plot_DEGs.png", volcano, width = 8, height = 6, dpi = 300)
+ggsave("Volcano_Plot_DEGs.pdf", volcano, width = 8, height = 6)
+
+# --- Export DEG tables ---
+up_deg   <- subset(deg, Significance == "Up")
+down_deg <- subset(deg, Significance == "Down")
+
+write.csv(up_deg, "Upregulated_genes.csv")
+write.csv(down_deg, "Downregulated_genes.csv")
+write.csv(deg, "All_DEGs.csv")
+
+```
+
+```{r}
+# List of immune checkpoint genes you want to highlight
+genes_of_interest <- c("CD274", "PDCD1", "CTLA4", "LAG3", "TIGIT")
+
+# Top 10 significant DEGs (up or down)
+top_sig <- deg[deg$Significance != "Not Sig", ]
+top_sig <- top_sig[order(top_sig$adj.P.Val), ][1:10, ]
+
+# Pull out checkpoint genes regardless of significance
+checkpoints <- deg[rownames(deg) %in% genes_of_interest, ]
+
+# Combine both
+label_genes <- rbind(top_sig, checkpoints)
+
+# Volcano plot
+ggplot(deg, aes(x = logFC, y = -log10(adj.P.Val), color = Significance)) +
+  geom_point(alpha = 0.6, size = 1.5) +
+  geom_vline(xintercept = c(-1,1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  scale_color_manual(values = c("Down" = "blue", "Up" = "red", "Not Sig" = "grey")) +
+  theme_minimal(base_size = 14) +
+  geom_text_repel(data = label_genes,
+                  aes(label = rownames(label_genes)),
+                  size = 3, box.padding = 0.5, max.overlaps = 50)
+
+ggsave("volcano_plot.png", plot = p, width = 8, height = 6, dpi = 300)
+
+
+```
+
+
+
+```{r}
+library(maftools)
+# Load packages
+install.packages(c("data.table", "dplyr"))
+library(data.table)
+library(dplyr)
+
+# URL for the public BRCA MC3 MAF
+maf_url <- "https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/mc3%2FBRCA_mc3.txt.gz"
+
+# Read gzipped MAF directly from URL
+maf <- fread(cmd = paste("curl -s", maf_url))
+head(maf)
+
+# Filter mutations: only PASS and coding (optional: adjust Variant_Classification)
+maf_filtered <- maf %>%
+  filter(FILTER == "PASS") %>%
+  filter(Variant_Classification %in% c(
+    "Missense_Mutation", "Nonsense_Mutation", "Frame_Shift_Del", "Frame_Shift_Ins",
+    "Splice_Site", "Nonstop_Mutation", "In_Frame_Del", "In_Frame_Ins"
+  ))
+
+# Count mutations per sample
+tmb_counts <- maf_filtered %>%
+  group_by(Tumor_Sample_Barcode) %>%
+  summarise(Mutation_Count = n())
+
+# Normalize by exome size (~38 Mb)
+exome_size_mb <- 38
+tmb_counts <- tmb_counts %>%
+  mutate(TMB = Mutation_Count / exome_size_mb)
+
+# View TMB
+head(tmb_counts)
+
+# Optional: save result
+write.csv(tmb_counts, "BRCA_TMB.csv", row.names = FALSE)
+
+```
+```{r}
+# Load packages
+#install.packages(c("data.table", "dplyr", "ggplot2"))
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+# URL for the public BRCA MC3 MAF
+maf_url <- "https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/mc3%2FBRCA_mc3.txt.gz"
+
+# Read gzipped MAF directly from URL
+maf <- fread(cmd = paste("curl -s", maf_url))
+head(maf)
+colnames(maf)
+
+# Count all mutations per sample
+tmb_counts <- maf %>%
+  group_by(sample) %>%
+  summarise(Mutation_Count = n()) %>%
+  mutate(TMB = Mutation_Count / 38)  # 38 Mb exome
+
+# View TMB
+head(tmb_counts)
+
+# Save TMB table
+write.csv(tmb_counts, "BRCA_TMB.csv", row.names = FALSE)
+
+# Plot TMB distribution
+ggplot(tmb_counts, aes(x = TMB)) +
+  geom_histogram(binwidth = 0.2, fill = "steelblue", color = "black") +
+  theme_minimal() +
+  labs(title = "TMB Distribution in TCGA-BRCA Cohort",
+       x = "Tumor Mutational Burden (mutations/Mb)",
+       y = "Number of Samples")
+
+
+```
+```{r}
+# ---- packages ----
+#nooooinstall.packages(c("openxlsx","dplyr"))
+library(openxlsx)
+library(dplyr)
+
+
+# ---- settings ----
+infile  <- "TNBC_expression_matrix.csv"   # <- CSV file
+outfile <- "TNBC_expression_for_CIBERSORTx.txt"
+
+# If your matrix is log2(TPM + 1), set this TRUE to back-transform to TPM.
+backtransform_log2_TPMp1 <- FALSE
+
+# ---- read ----
+# Assumes first column = gene symbols
+expr <- read.csv(infile, header = TRUE, stringsAsFactors = FALSE, check.names = FALSE)
+
+# rename first column to GeneSymbol
+colnames(expr)[1] <- "GeneSymbol"
+
+# remove empty gene symbols if any
+expr <- expr %>% filter(!is.na(GeneSymbol), GeneSymbol != "")
+
+# ---- handle duplicates: keep the row with highest median across samples ----
+num_cols <- setdiff(colnames(expr), "GeneSymbol")
+expr_dedup <- expr %>%
+  rowwise() %>%
+  mutate(.med = median(c_across(all_of(num_cols)), na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(GeneSymbol, desc(.med)) %>%
+  distinct(GeneSymbol, .keep_all = TRUE) %>%
+  select(-.med)
+
+# ---- optional: back-transform from log2(TPM+1) to TPM ----
+if (backtransform_log2_TPMp1) {
+  expr_dedup[, num_cols] <- lapply(expr_dedup[, num_cols], function(x) {
+    (2^as.numeric(x)) - 1
+  })
+}
+
+# ---- drop genes with all zeros ----
+all_zero <- apply(expr_dedup[, num_cols], 1, function(v) all(is.na(v) | v == 0))
+expr_final <- expr_dedup[!all_zero, ]
+
+# ---- write CIBERSORTx input (tab-delimited) ----
+write.table(expr_final, outfile, sep = "\t", quote = FALSE, row.names = FALSE)
+
+cat("Wrote:", outfile, "\nRows (genes):", nrow(expr_final), "Cols (samples):", ncol(expr_final)-1, "\n")
+
+```
+```{r}
+
+library(dplyr)
+library(readr)
+
+# Load raw expression matrix
+expr_raw <- read_csv("TNBC_expression_matrix.csv")
+
+# Check first column name
+head(expr_raw[[1]])
+
+# Ensure first column is called "GeneSymbol"
+colnames(expr_raw)[1] <- "GeneSymbol"
+
+# Remove junk rows (like NAs or empty symbols)
+expr_clean <- expr_raw %>%
+  filter(!is.na(GeneSymbol), GeneSymbol != "")
+
+# If multiple rows per gene, keep the row with highest median expression
+expr_final <- expr_clean %>%
+  rowwise() %>%
+  mutate(.med = median(c_across(-GeneSymbol), na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(GeneSymbol, desc(.med)) %>%
+  distinct(GeneSymbol, .keep_all = TRUE) %>%
+  select(-.med)
+
+# Save final file
+write_tsv(expr_final, "TNBC_expression_CIBERSORTx_ready.txt")
+
+
+```
+```{r}
+# Load libraries
+library(readr)
+library(dplyr)
+
+# Read your raw expression file (CSV from Excel)
+expr_raw <- read_csv("TNBC_expression_matrix.csv")
+
+# Rename the first column to GeneSymbol
+colnames(expr_raw)[1] <- "GeneSymbol"
+
+# Save as tab-delimited .txt (CIBERSORTx prefers tab format)
+
+write.table(expr_raw, 
+            file = "TNBC_expression_CIBERSORTx_ready.txt",
+            sep = "\t", 
+            row.names = FALSE, 
+            quote = FALSE)
+test <- read.delim("TNBC_expression_CIBERSORTx_ready.txt", 
+                   check.names = FALSE)
+dim(test)        # should match your original (genes × samples)
+head(test[,1:5]) # first few genes and samples
+
+
+cat("✅ File saved: TNBC_expression_CIBERSORTx_ready.txt\n")
+
+```
+```{r}
+# Load data
+# Read the CIBERSORTx output
+results <- read.csv("CIBERSORTx_Job1_Results.csv", row.names = 1)
+
+# Keep only immune cell fractions (remove pval, RMSE, Correlation if present)
+fractions <- results[, 1:22]   # assuming first 22 columns are immune cell types
+
+# Make stacked barplot
+barplot(t(as.matrix(fractions)), 
+        col = rainbow(22), 
+        border = NA,
+        las = 2, 
+        cex.names = 0.6,
+        ylab = "Cell Fraction",
+        main = "Immune Cell Composition per Sample")
+
+legend("topright", legend = colnames(fractions), 
+       fill = rainbow(22), cex = 0.5)
+
+```
+```{r}
+# ================================
+# Step 0. Load libraries
+# ================================
+library(dplyr)
+library(stringr)
+library(data.table)
+
+# ================================
+# Step 1. Load your files
+# ================================
+# CIBERSORTx results (immune cell fractions per sample)
+immune <- read.csv("CIBERSORTx_Job1_Results.csv", row.names = 1)
+
+# PD-L1 expression (can be from DEG or RNA-seq expression matrix)
+pdl1 <- read.csv("TNBC_PDL1_DEG_results.csv")
+
+
+
+
+
+
+dim(expr)
+# Check if CD274 exists
+"CD274" %in% rownames(expr)
+head(rownames(expr))
+head(pdl1)
+colnames(pdl1)
+
+cd274 <- pdl1[pdl1$Gene == "CD274", ]
+colnames(cd274)
+dim(cd274)
+print(cd274)
+str(cd274)
+
+cd274_expr <- expr["CD274", ]
+dim(cd274_expr)
+#cd274_expr <- as.data.frame(t(cd274_expr))
+#colnames(cd274_expr) <- "CD274"
+#print(cd274_expr)
+
+
+print(expr)
+expr <- as.data.frame(expr)
+rownames(expr) <- expr[,1]
+expr <- expr[,-1]
+head(rownames(expr))
+dim(expr)
+
+cd274_expr <- expr["CD274", ]
+print(cd274_expr)
+
+
+cd274_expr <- as.data.frame(t(cd274_expr))
+colnames(cd274_expr) <- "CD274"
+print(cd274_expr)
+
+
+# TMB file (sample-wise TMB values)
+tmb <- read.csv("BRCA_TMB.csv")
+colnames(tmb)
+# TCGA clinical data
+
+clin <- read.table("BRCA_clinicalMatrix.txt", 
+                   header = TRUE, 
+                   sep = "\t", 
+                   quote = "", 
+                   stringsAsFactors = FALSE)
+clin$SampleID_short <- substr(clin$sampleID, 1, 15)
+colnames(clin)
+# ================================
+# Step 2. Harmonize Sample IDs
+# ================================
+# For TCGA, keep only first 12 characters of barcode
+clean_id <- function(x) substr(x, 1, 12)
+
+rownames(cd274_expr) <- clean_id(rownames(cd274_expr))
+rownames(immune)     <- clean_id(rownames(immune))
+tmb$SampleID         <- clean_id(tmb$sample)
+clin$SampleID        <- clean_id(clin$sampleID)
+dim(cd274_expr)
+summary(cd274_expr$CD274)
+
+#MAIN WORK HERE NOT THE BELOW
+merged_data <- Reduce(function(x, y) merge(x, y, by="SampleID"),
+                      list(cd274_expr, immune, tmb, clin))
+dim(merged_data)
+colSums(is.na(merged_data))
+
+#KEPT IT JUST IN CASE
+cd274_expr$SampleID <- rownames(cd274_expr)
+head(cd274_expr)
+immune$SampleID <- rownames(immune)
+merged_data <- merge(cd274_expr, immune, by = "SampleID")
+dim(merged_data)
+merged_data <- merge(merged_data, tmb, by = "SampleID")
+dim(merged_data)
+merged_data <- merge(merged_data, clin, by = "SampleID")
+dim(merged_data)
+colSums(is.na(merged_data))
+
+
+
+
+
+
+
+analysis_df <- merged_data[, c(
+  "SampleID",
+  "CD274",
+  "TMB",
+  "T.cells.CD8",
+  "OS_Time_nature2012",
+  "OS_event_nature2012",
+  "age_at_initial_pathologic_diagnosis",
+  "pathologic_stage"
+)]
+
+dim(analysis_df)
+colSums(is.na(analysis_df))
+
+
+#CHECK DISTRIBUTIONS
+summary(analysis_df$CD274)
+summary(analysis_df$TMB)
+summary(analysis_df$T.cells.CD8)
+
+#CORRELATION
+cor.test(analysis_df$CD274, analysis_df$T.cells.CD8, method="spearman")
+cor.test(analysis_df$CD274, analysis_df$TMB, method="spearman")
+#This tells you:
+#Is PD-L1 linked to CD8 infiltration?
+#Is PD-L1 linked to mutation burden?
+
+#KAPLAN-MEIER SURVIVAL
+analysis_df$PDL1_group <- ifelse(
+  analysis_df$CD274 > median(analysis_df$CD274),
+  "High",
+  "Low"
+)
+#P VALUES NOT SIGNIFICANT, SHOWS THAT TMB IS NOT DEPENDENT ON PDL1 .
+boxplot(analysis_df$TMB)
+analysis_df$TMB_log <- log2(analysis_df$TMB + 1)
+#plot
+library(survival)
+library(survminer)
+
+fit <- survfit(
+  Surv(OS_Time_nature2012, OS_event_nature2012) ~ PDL1_group,
+  data = analysis_df
+)
+
+km_plot<-ggsurvplot(fit, data = analysis_df,pva1=TRUE)
+print(km_plot)
+
+#log rank grouping 
+coxph(
+  Surv(OS_Time_nature2012, OS_event_nature2012) ~ TRS,
+  data = analysis_df
+)
+
+#km style visualization
+analysis_df$TRS_group3 <- cut(
+  analysis_df$TRS,
+  breaks = quantile(analysis_df$TRS, probs = c(0, 0.33, 0.66, 1)),
+  labels = c("Low", "Medium", "High"),
+  include.lowest = TRUE
+)
+
+fit3 <- survfit(
+  Surv(OS_Time_nature2012, OS_event_nature2012) ~ TRS_group3,
+  data = analysis_df
+)
+
+ggsurvplot(fit3, data = analysis_df, pval = TRUE)
+ggsave("fit3.png", width = 6, height = 4, dpi = 300)
+
+
+#check analysisdf
+colnames(analysis_df)
+
+
+ggsave("km_plot.png",width = 6, height = 4, dpi = 300)
+
+
+
+
+
+#IDO2
+expr <- read.csv("TNBC_expression_matrix.csv", row.names = 1)
+dim(expr)
+head(expr)
+grep("IDO2", rownames(expr), value = TRUE)
+ido2_expr <- expr["IDO2", ]
+ido2_expr <- as.numeric(expr["IDO2", ])
+ido2_df <- data.frame(
+  SampleID = colnames(expr),
+  IDO2 = ido2_expr
+)
+head(ido2_df)
+
+
+
+#merge it to analysis df
+#check both sides
+head(analysis_df$SampleID)
+head(ido2_df$SampleID)
+#fix the  ido2 id
+ido2_df$SampleID <- gsub("\\.", "-", ido2_df$SampleID)
+ido2_df$SampleID <- substr(ido2_df$SampleID, 1, 12)
+merged_df <- merge(analysis_df, ido2_df, by = "SampleID")
+dim(merged_df)
+head(merged_df[, c("SampleID","IDO2")])
+
+#IDO2 KM plot
+merged_df$IDO2_group <- ifelse(
+  merged_df$IDO2 > median(merged_df$IDO2, na.rm = TRUE),
+  "High",
+  "Low"
+)
+table(merged_df$IDO2_group)
+library(survival)
+
+fit_ido2 <- survfit(
+  Surv(OS_Time_nature2012, OS_event_nature2012) ~ IDO2_group,
+  data = merged_df
+)
+library(survminer)
+
+ggsurvplot(
+  fit_ido2,
+  data = merged_df,
+  pval = TRUE,
+  risk.table = TRUE,
+  conf.int = TRUE
+)
+p <- ggsurvplot(
+  fit_ido2,
+  data = merged_df,
+  pval = TRUE,
+  risk.table = TRUE,
+  conf.int = TRUE
+)
+
+png("KM_IDO2.png", width = 800, height = 600)
+
+print(p)
+
+dev.off()
+
+#To do IDO2 vs immune
+cibersort <- read.csv("CIBERSORTx_Job1_Results.csv", row.names = 1)
+immune_subset <- data.frame(
+  SampleID = rownames(cibersort),
+  Tregs = cibersort$T.cells.regulatory..Tregs.,
+  M2 = cibersort$Macrophages.M2
+)
+clean_id <- function(x) substr(gsub("\\.", "-", x), 1, 12)
+
+immune_subset$SampleID <- clean_id(immune_subset$SampleID)
+head(immune_subset)
+merged_df <- merge(merged_df, immune_subset, by = "SampleID")
+colnames(merged_df)
+
+# IDO2 vs Tregs
+cor.test(merged_df$IDO2, merged_df$Tregs, method = "spearman")
+
+#Spearman's rank correlation rho
+
+#data:  merged_df$IDO2 and merged_df$Tregs
+#S = 34060, p-value = 0.684
+#alternative hypothesis: true rho is not equal to 0
+#sample estimates:
+#       rho 
+#S111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111110.05363796
+
+# IDO2 vs M2
+cor.test(merged_df$IDO2, merged_df$M2, method = "spearman")
+
+#Spearman's rank correlation rho
+
+#data:  merged_df$IDO2 and merged_df$M2
+#S = 41999, p-value = 0.2023
+#alternative hypothesis: true rho is not equal to 0
+#sample estimates:
+#       rho 
+#-0.1669527 
+
+library(ggplot2)
+
+ggplot(merged_df, aes(x = IDO2, y = Tregs)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "IDO2 vs Tregs")
+
+ggplot(merged_df, aes(x = IDO2, y = M2)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "IDO2 vs M2 Macrophages")
+ggsave("IDO2 vs Tregs.png", width = 6, height = 4, dpi = 300)
+ggsave("IDO2 vs M2 Macrophages.png", width = 6, height = 4, dpi = 300)
+
+
+# test
+graphics.off()
+windows()
+plot(1:10)
+
+
+
+#NOW SURVIVAL ANALYSIS WON'T WORK, ROLLS EYES.
+analysis_df$TMB_log <- log2(analysis_df$TMB + 1)
+summary(analysis_df$TMB_log)
+boxplot(analysis_df$TMB_log)
+
+#Z SCORE
+analysis_df$PDL1_z <- scale(analysis_df$CD274)
+analysis_df$CD8_z  <- scale(analysis_df$T.cells.CD8)
+analysis_df$TMB_z  <- scale(analysis_df$TMB_log)
+
+analysis_df$TRS <- analysis_df$PDL1_z +
+                   analysis_df$CD8_z +
+                   analysis_df$TMB_z
+
+summary(analysis_df$TRS)
+hist(analysis_df$TRS)
+
+analysis_df$TRS_group <- ifelse(
+  analysis_df$TRS > median(analysis_df$TRS),
+  "Immune-High",
+  "Immune-Low"
+)
+
+table(analysis_df$TRS_group)
+
+#HEATMAP
+library(pheatmap)
+
+vars <- analysis_df[, c("CD274", "T.cells.CD8", "TMB_log", "TRS")]
+
+cor_matrix <- cor(vars, method = "spearman")
+
+pheatmap(cor_matrix, display_numbers = TRUE)
+
+ggsave("cor_matrix.png",width = 6, height = 4, dpi = 300)
+
+ggsave("cor_matrix.png",width = 6, height = 4, dpi = 300)
+
+
+
+
+
+#EXPLORATORY SURVIVAL
+fit_trs <- survfit(
+  Surv(OS_Time_nature2012, OS_event_nature2012) ~ TRS_group,
+  data = analysis_df
+)
+
+ggsurvplot(fit_trs, data = analysis_df, pval = TRUE)
+ggsave("fit_trs.png", width = 6, height = 4, dpi = 300)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
